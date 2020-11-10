@@ -1,0 +1,280 @@
+---
+title: "Final Project: Indonesian Presidential Elections and Economic Factors"
+author: "Garda Ramadhito"
+date: "19 May 2019"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(rpart)
+library(rattle)
+library(openintro)
+library(tidytext)
+library(randomForest)
+library(caret)
+library(ggrepel)
+
+
+#Read data
+Indo.data1 <- read_csv("IndoData1.csv")
+```
+
+
+##Introduction
+
+The 2019 Indonesian elections is an ongoing development in the young democratic politics of Indonesia. The two candidates, the incumbent Joko Widodo (better known as Jokowi) and the opponent Prabowo Subianto (widely known by his first name Prabowo), fought for the second time for the presidency. In a way, the 2019 elections were a referendum on Jokowi's performance since his first win in 2014 given his economic promises, including massive Chinese-funded infrastructure projects and poverty reduction through human capital investment and high growth averaging around 6-7%. This research project explores political economic factors affecting election results on a provincial level.
+
+At the same time, the 2014 and 2019 elections exposed and enlarged an existing social cleavage since Indonesia's democratic transition in 1998: the issue of Islam and the state. Despite its Muslim-majority population, Indonesia is largely a secular state with a mostly secular civil code that treats its five officially-recognized religions equally in principle. Since 1998, Islamist groups have challenged the secular nature of the state and the debate has divided the country by identity and ideology, with moderate Muslims and religious minorities on one side, and conservative-Islamist Muslims and pro-old regime voters on the other. Indeed, Prabowo, who comes was a military general under the pre-1998 authoritarian government, has won twice in largely conservative provinces like West Java and West Sumatera. Likewise, Jokowi has won twice in more moderate Muslim and non-Muslim majority provinces such as Central Java and Bali. 
+
+The purpose of this project, however, is to contest the idea that the secularist-Islamist divide is the sole reason behind votes in the 2014 and the 2019 elections. The project examines political economy factors, such as the Human Development Index (HDI) and size of certain industries in a province, that may affect the percentage of votes in an Indonesian province. Using a combination of the World Bank's Indonesia Database for Policy and Economic Research (DAPOER) dataset and the presidential elections results from 2014 and 2019, this project attempts to answer the following research questions: what economic factors have a statistically-significant relationship with the percentage of votes for Jokowi? Is their relationship positive or negative? 
+
+##Methodology
+
+The dataset that I used - the World Bank DAPOER dataset - contains a multitude of economic variables on the provincial level in Indonesia. This includes broad indicators such as GDP of every province, population projection, poverty rate and HDI, and more specific ones such as GDP expenditure on gross fixed capital formation to GDP on agriculture and forestry. I combined it with the presidential election results of 2014 and 2019 obtained from reputable news sources. This allows me to conduct analysis between economic variables and vote share.
+
+In terms of data, I made several decisions. First, I decided to use economic indicators from 2013 for the 2014 elections because of time-lag effect and indicators from 2017 to describe the outcome of the 2019 elections because of the lack of data from 2018 in the World Bank database. I assume that the changes between 2017 and 2018 are not very significant (which could be flawed). Second, I included annual population projection, rather than the actual population count which is unavailable, for every province. Third, for four of the provinces in the 2019 elections, their actual vote tallies have not been fully counted at the time of writing, so I included quick count results instead. These modifications might impact the results
+
+I mainly used economic variables that describe the size of certain sectors within the province. For instance, the variable NA.GDP.ACC.FB.SNA08.CR
+describes the GDP on Accommodation & Food Beverages Activity Sector (in IDR Million) in Current Prices. Because these variables are absolute in value, I weighted them by the population of every province, with the results demonstrated in the following graph. 
+
+```{r}
+Indo.data2 <- Indo.data1 %>% 
+  mutate(stkchange.weighted = NE.GDI.STKB.SNA08.CR/Population,
+         exportsexpend.weighted = NE.GDI.EXPT.SNA08.CR/Population,
+         govtconsump.weighted = NE.GDI.CON.GOVT.SNA08.CR/Population,
+         grossfixed.weighted = NE.GDI.FTOT.SNA08.CR/Population,
+         importsexpend.weighted = NE.GDI.IMPT.SNA08.CR/Population,
+         interregionexp.weighted = NE.GDI.INEX.SNA08.CR/Population,
+         nonprofitconsump.weighted = NE.GDI.CON.NPI.SNA08.CR/Population,
+         privateconsump.weighted = NE.GDI.CON.PRVT.SNA08.CR/Population,
+         accomfb.weighted = NA.GDP.ACC.FB.SNA08.CR/Population,
+         agriforestfish.weighted = NA.GDP.AGR.SNA08.CR/Population,
+         businesssector.weighted = NA.GDP.BUSS.SNA08.CR/Population,
+         construction.weighted = NA.GDP.CNST.SNA08.CR/Population,
+         eduservices.weighted = NA.GDP.EDUS.SNA08.CR/Population,
+         elecgas.weighted = NA.GDP.ELEC.GAS.SNA08.CR/Population,
+         finance.weighted = NA.GDP.FINS.SNA08.CR/Population,
+         healthsocwork.weighted = NA.GDP.HLTH.SOCW.SNA08.CR/Population,
+         infocomm.weighted = NA.GDP.INF.COMM.SNA08.CR/Population,
+         manufacturing.weighted = NA.GDP.MNF.SNA08.CR/Population,
+         miningquarry.weighted = NA.GDP.MINQ.SNA08.CR/Population,
+         otherservice.weighted = NA.GDP.SRV.OTHR.SNA08.CR/Population,
+         publicdefsocsec.weighted = NA.GDP.PADM.DEF.SNA08.CR/Population,
+         realestate.weighted = NA.GDP.REST.SNA08.CR/Population,
+         transtor.weighted = NA.GDP.TRAN.STOR.SNA08.CR/Population,
+         waterwaste.weighted = NA.GDP.WTR.WST.SNA08.CR/Population,
+         wholesalerepair.weighted = NA.GDP.TRD.SNA08.CR/Population,
+         laborforce.rate = 100*(SL.TLF/Population),
+         GDP.weighted = NE.GDI.TOTL.SNA08.CR/Population) %>% 
+  select(-NE.GDI.STKB.SNA08.CR,
+         -NE.GDI.EXPT.SNA08.CR,
+         -NE.GDI.CON.GOVT.SNA08.CR,
+         -NE.GDI.FTOT.SNA08.CR,
+         -NE.GDI.IMPT.SNA08.CR,
+         -NE.GDI.INEX.SNA08.CR,
+         -NE.GDI.CON.NPI.SNA08.CR,
+         -NE.GDI.CON.PRVT.SNA08.CR,
+         -NA.GDP.ACC.FB.SNA08.CR,
+         -NA.GDP.AGR.SNA08.CR,
+         -NA.GDP.BUSS.SNA08.CR,
+         -NA.GDP.CNST.SNA08.CR,
+         -NA.GDP.EDUS.SNA08.CR,
+         -NA.GDP.ELEC.GAS.SNA08.CR,
+         -NA.GDP.FINS.SNA08.CR,
+         -NA.GDP.HLTH.SOCW.SNA08.CR,
+         -NA.GDP.REST.SNA08.CR,
+         -NA.GDP.INF.COMM.SNA08.CR,
+         -NA.GDP.MNF.SNA08.CR,
+         -NA.GDP.MINQ.SNA08.CR,
+         -NA.GDP.SRV.OTHR.SNA08.CR,
+         -NA.GDP.PADM.DEF.SNA08.CR,
+         -NA.GDP.REST.SNA08.CR,
+         -NA.GDP.TRAN.STOR.SNA08.CR,
+         -NA.GDP.WTR.WST.SNA08.CR,
+         -NA.GDP.TRD.SNA08.CR,
+         -SL.EMP.AGR.FRST.FSH,
+         -SL.EMP.CNST,
+         -SL.EMP.ELC,
+         -SL.EMP.FINS,
+         -SL.EMP.IND,
+         -SL.EMP.MINQ,
+         -SL.EMP.SOCL,
+         -SL.EMP.TRAD,
+         -SL.EMP.TRAN,
+         -SL.TLF,
+         -SI.POV.BPL,
+         -Prabowo.Vote)
+
+#Accommodaton and F&B
+Indo.data2 %>%
+  subset(Year == 2013) %>% 
+  ggplot(aes(x = reorder(Provinces.Name, accomfb.weighted),
+             y = accomfb.weighted)) +
+  geom_bar(stat = "identity",
+           fill = "blue") +
+  xlab("Province") +
+  ylab("Value (IDR millions), Current Prices") +
+  coord_flip() +
+  ggtitle("GDP on Accommodation and F&B Activity per capita") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        legend.position = "bottom", 
+        legend.title = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+
+In addition, these graphs show the results of the 2014 and 2019 presidential elections, grouped by candidates.
+
+```{r}
+#Jokowi results
+Indo.data2 %>%
+  ggplot(aes(x = reorder(Provinces.Name, Jokowi.Vote),
+             y = Jokowi.Vote,
+             fill = factor(Year))) +
+  geom_bar(stat = "identity",
+           position = "dodge") +
+  xlab("Province") +
+  ylab("Vote Share (%)") +
+  coord_flip() +
+  ggtitle("Jokowi's Vote Share, by province") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5), 
+        legend.position = "bottom", 
+        legend.title = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"))
+
+#Prabowo results
+Indo.data2 %>%
+  mutate(Prabowo.Vote = 100 - Jokowi.Vote) %>% 
+    ggplot(aes(x = reorder(Provinces.Name, Prabowo.Vote),
+               y = Prabowo.Vote,
+               fill = factor(Year))) +
+    geom_bar(stat = "identity",
+             position = "dodge") +
+    xlab("Province") +
+    ylab("Vote Share (%)") +
+    coord_flip()+
+  ggtitle("Prabowo's Vote Share, by province") +
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank(),
+          plot.title = element_text(hjust = 0.5), 
+          legend.position = "bottom", 
+          legend.title = element_blank(),
+          panel.background = element_blank(),
+          axis.line = element_line(colour = "black"))
+```
+
+In terms of statistical techniques, I used a combination of machine learning techniques to reveal which variables are the most important in explaining for the variations in votes for Jokowi in both the 2014 and the 2019 elections. After that, I used linear models (differences-in-differences) to delve deeper into the selected variables. But first, I use the decision tree to select which variables would lead to a Jokowi win in every province. However, this techique modifies the dependent variable because it changes it from the vote count to a binary variable.
+
+```{r}
+Indo.data3 <- Indo.data2 %>% 
+  select(-Provinces.Code,
+         -Provinces.Name,
+         -Year)
+
+Indo.data4 <- Indo.data3 %>% 
+  mutate(jokowi.wins = ifelse(Jokowi.Vote >= 50, 1, 0)) %>% 
+  select(-Jokowi.Vote)
+
+jokowitree1 <- rpart(factor(jokowi.wins) ~ .,
+                     data = Indo.data4)
+
+fancyRpartPlot(jokowitree1)
+```
+
+As shown from the tree, three variables stand out: GDP on Accommodation and F&B per capita, HDI and GDP on educational services per capita. If GDP on Accommodation and F&B per capita of a province is more than 0.77 IDR million, the province would tend to vote for Jokowi. If not, we look into its HDI; if it is more than or equal to 68, it would tend to vote for Prabowo. If it is less than that, we look into its GDP on educational services per capita; if it is more than 0.99 IDR million, it would tend to vote more for Jokowi and vice-versa. Next, I use the forest technique.
+
+```{r}
+jokowiforest1 <- randomForest(Jokowi.Vote ~ .,
+                              data = Indo.data3,
+                              na.action = na.exclude)
+varImpPlot(jokowiforest1)
+```
+
+As shown from the plot of variable importance, HDI is very high on the list but higher than that is laborforce.rate, or the percentage of the population in the labor force of a particular province. This technique also seems to be more accurate than the previous tree because it does not modify the dependent variable. With these variables in mind, we can look into the results by using linear regression.
+
+##Results
+
+The variables of interest are the percentage of the population in the labor force (laborforce.rate), HDI (IDX.HDI.REV), GDP on Accommodation and F&B per capita (accomfb.weighted) and GDP on Educational Services per capita (eduservices.weighted) in every province. First, I build a linear model with only laborforce.rate:
+
+```{r}
+jokowi.linear1 <- lm(Jokowi.Vote ~ laborforce.rate,
+                    data = Indo.data2)
+
+summary(jokowi.linear1)
+```
+
+From the results, it is shown that indeed laborforce.rate has a statistically-significant relationship with the vote share that goes to Jokowi, with one percentage point increase in laborforce.rate contributing to a 1.7062 percentage point increase in Jokowi's vote share. I controlled for HDI in the second model.
+
+```{r}
+jokowi.linear2 <- lm(Jokowi.Vote ~ laborforce.rate + IDX.HDI.REV,
+                     data = Indo.data2)
+
+summary(jokowi.linear2)
+```
+
+Again, it is shown that indeed laborforce.rate has a statistically-significant relationship with the vote share that goes to Jokowi, this time with HDI included as another independent variable. The relationship between HDI and Jokowi's vote share is statistically-significant at the 0.05 level but negative, with an increase of one in the index contributing to a 0.9134 percentage point decrease. In the third model, I controlled for  GDP on Accommodation and F&B per capita (accomfb.weighted) and GDP on Educational Services per capita (eduservices.weighted).
+
+```{r}
+jokowi.linear3 <- lm(Jokowi.Vote ~ laborforce.rate + IDX.HDI.REV + accomfb.weighted + eduservices.weighted,
+                     data = Indo.data2)
+
+summary(jokowi.linear3)
+```
+
+From this, laborforce.rate and HDI still have statistically-significant relationships with Jokowi's vote share (at the 0.001 level) and the direction of the relationships remain the same. However, accomfb.weighted has also a statistically significant relationship with Jokowi's vote share while eduservices.weighted does not. Yet, I contend that the relationships of the accomfb.weighted with Jokowi's vote share is questionable in the following k-means cluster graph.
+
+```{r}
+jokowi.subset <- Indo.data2 %>% 
+  select(Jokowi.Vote,
+         laborforce.rate,
+         IDX.HDI.REV,
+         accomfb.weighted,
+         eduservices.weighted)
+
+jokowi.kmeans <- kmeans(na.omit(jokowi.subset), 2)
+```
+
+I made a subset of the main dataset and selected the variables of interest for the k-means clustering. I divided the dataset into two clusters, based on the assumption that there are two important groups of provinces: those who voted for Jokowi and those who did not. So first, I built a plot of accomfb.weighted against Jokowi's vote share:
+
+```{r}
+na.omit(jokowi.subset) %>% 
+  mutate(jokowi.cluster = jokowi.kmeans$cluster) %>% 
+  ggplot(aes(x = accomfb.weighted,
+             y = Jokowi.Vote)) + 
+  geom_point(aes(color = factor(jokowi.cluster))) +
+  geom_smooth(method = "lm", se = FALSE) +
+  geom_text_repel(data = Indo.data2,
+                  mapping = aes(label = Provinces.Code))
+```
+
+From the graph, it is shown that the positive relationship between accomfb.weighted and Jokowi.Vote is more due to the four outliers, two from Jakarta and two from Bali. These are the two main tourist destinations in Indonesia thus there significantly more accommodation and F&B activity in these two provinces. Since Bali overwhelmingly votes for Jokowi, it makes it seem that there is a positive relationship across the board between accomfb.weighted and Jokowi.Vote. However, this is untrue, especially when we consider the clustering of thr two groups, which seem to be vertically across each other. We can compare this to the plots laborforce.rate and HDI individually against Jokowi.Vote.
+
+```{r}
+na.omit(jokowi.subset) %>% 
+  mutate(jokowi.cluster = jokowi.kmeans$cluster) %>% 
+  ggplot(aes(x = laborforce.rate,
+             y = Jokowi.Vote)) + 
+  geom_point(aes(color = factor(jokowi.cluster))) +
+  geom_smooth(method = "lm", se = FALSE)
+  
+
+na.omit(jokowi.subset) %>% 
+  mutate(jokowi.cluster = jokowi.kmeans$cluster) %>% 
+  ggplot(aes(x = IDX.HDI.REV,
+             y = Jokowi.Vote)) + 
+  geom_point(aes(color = factor(jokowi.cluster))) +
+  geom_smooth(method = "lm", se = FALSE) 
+```
+
+From the laborforce.rate plot, it is clear that there are no major outliers in the data although the points are more scattered. Yet, there seems to be two distinct clusters located diagonally to each other, confirming the positive relationship from the linear regression. From the HDI plot, it is shown also that there are no major outliers in the data and there looks to be two distinct clusters located diagonally across each other, confirming the negative relationship from the earlier linear model. Hence, the proportion of a province's population in the labor force and the HDI of the province correlate with Jokowi's vote share, positively and negatively, respectively.
+
+##Conclusion
+
+As such, there seems to be certain economic factors also, not just religious ideology, playing into the victory of Jokowi in the 2014 and the 2019 presidential elections in Indonesia. Specifically, the proportion of a province's population in the labor force and the HDI of the province are two of the economic variables that have Jokowi's vote share in the province. As an interpretation, that proportion of population in the labor force could reflect confidence that one can find a job in the growing economy of the province, thus leading them to vote for Jokowi who has promised anti-poverty economic reforms and to a certain extent managed the economy well. By contrast, higher HDI might reflect a different economic interest than that of a poorer province. Ultimately, this research project is limited in that it could not predict the next elections and some of its methodology might be limited by the modifications that I made earlier and the lack of other useful data, like palm oil production and urban-rural divide. Nonetheless, there is a strong case to be made that the 2014 and 2019 Indonesian presidential elections were not just about religion and the state as many observers have overblown.
